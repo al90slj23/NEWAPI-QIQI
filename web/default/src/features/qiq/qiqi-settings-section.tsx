@@ -42,14 +42,19 @@ import { SettingsSection } from '@/features/system-settings/components/settings-
 import { useResetForm } from '@/features/system-settings/hooks/use-reset-form'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 
+const qiqiContextRequestLoggingOption =
+  'qiqi_setting.context_request_logging_enabled' as const
+
 const qiqiSettingsSchema = z.object({
-  'qiqi_setting.context_request_logging_enabled': z.boolean(),
+  contextRequestLoggingEnabled: z.boolean(),
 })
 
 type QiqiSettingsFormValues = z.infer<typeof qiqiSettingsSchema>
 
 type QiqiSettingsSectionProps = {
-  defaultValues: QiqiSettingsFormValues
+  defaultValues: {
+    [qiqiContextRequestLoggingOption]: boolean
+  }
 }
 
 export function QiqiSettingsSection({
@@ -57,38 +62,45 @@ export function QiqiSettingsSection({
 }: QiqiSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
-  const baselineRef = useRef<QiqiSettingsFormValues>(defaultValues)
-  const baselineSerializedRef = useRef<string>(JSON.stringify(defaultValues))
+  const formDefaults: QiqiSettingsFormValues = {
+    contextRequestLoggingEnabled: defaultValues[qiqiContextRequestLoggingOption],
+  }
+  const baselineRef = useRef<QiqiSettingsFormValues>(formDefaults)
+  const baselineSerializedRef = useRef<string>(JSON.stringify(formDefaults))
 
   const form = useForm<QiqiSettingsFormValues>({
     resolver: zodResolver(qiqiSettingsSchema),
-    defaultValues,
+    defaultValues: formDefaults,
   })
   const { isDirty, isSubmitting } = form.formState
-  const contextLoggingEnabled = form.watch(
-    'qiqi_setting.context_request_logging_enabled'
-  )
+  const contextLoggingEnabled = form.watch('contextRequestLoggingEnabled')
 
-  useResetForm(form, defaultValues)
+  useResetForm(form, formDefaults)
 
   useEffect(() => {
-    const serialized = JSON.stringify(defaultValues)
+    const nextDefaults = {
+      contextRequestLoggingEnabled:
+        defaultValues[qiqiContextRequestLoggingOption],
+    }
+    const serialized = JSON.stringify(nextDefaults)
     if (serialized === baselineSerializedRef.current) return
 
-    baselineRef.current = defaultValues
+    baselineRef.current = nextDefaults
     baselineSerializedRef.current = serialized
   }, [defaultValues])
 
   const onSubmit = async (values: QiqiSettingsFormValues) => {
-    const key = 'qiqi_setting.context_request_logging_enabled'
-    if (values[key] === baselineRef.current[key]) {
+    if (
+      values.contextRequestLoggingEnabled ===
+      baselineRef.current.contextRequestLoggingEnabled
+    ) {
       toast.info(t('No changes to save'))
       return
     }
 
     const response = await updateOption.mutateAsync({
-      key,
-      value: values[key],
+      key: qiqiContextRequestLoggingOption,
+      value: values.contextRequestLoggingEnabled,
     })
 
     if (response.success) {
@@ -115,7 +127,7 @@ export function QiqiSettingsSection({
 
           <FormField
             control={form.control}
-            name='qiqi_setting.context_request_logging_enabled'
+            name='contextRequestLoggingEnabled'
             render={({ field }) => (
               <SettingsSwitchItem className='items-start rounded-md bg-muted/30 px-3 py-3 sm:px-4'>
                 <SettingsSwitchContent className='max-w-xl space-y-1'>
