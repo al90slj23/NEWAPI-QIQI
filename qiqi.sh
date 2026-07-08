@@ -147,7 +147,7 @@ show_menu() {
     echo "  5) 重启应用服务"
     echo "  0) 退出"
     echo ""
-    echo -e "  ${YELLOW}输入操作编号（直接回车退出）:${NC}"
+    echo -e "  ${YELLOW}输入操作编号（直接回车默认 1 完整发布）:${NC}"
 }
 
 git_has_changes() {
@@ -169,9 +169,12 @@ confirm_git_scope_for_deploy() {
     echo ""
 
     if [ "$AUTO_ADD_ALL" != "true" ]; then
-        read -r -p "是否执行 git add -A 并提交这些改动？[y/N] " reply
+        echo "  1) 执行 git add -A 并提交这些改动 [默认]"
+        echo "  0) 取消发布"
+        read -r -p "请选择 [1]: " reply
+        reply="${reply:-1}"
         case "$reply" in
-            y|Y|yes|YES) ;;
+            1|y|Y|yes|YES) ;;
             *) die "已取消发布。你也可以先手动 git add/commit，再重新运行脚本。" ;;
         esac
     else
@@ -463,7 +466,7 @@ main() {
         show_menu
         printf "  > "
         read -r choice
-        [ -n "$choice" ] || choice=0
+        [ -n "$choice" ] || choice=1
     fi
 
     case "$choice" in

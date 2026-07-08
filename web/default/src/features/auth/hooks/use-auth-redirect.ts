@@ -19,11 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 import { useNavigate } from '@tanstack/react-router'
 import i18n from 'i18next'
 
+import { DASHBOARD_DEFAULT_SECTION } from '@/features/dashboard/section-registry'
 import type { User } from '@/features/users/types'
 import { getSelf } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { saveUserId } from '../lib/storage'
+
+const DEFAULT_AUTH_REDIRECT = `/dashboard/${DASHBOARD_DEFAULT_SECTION}`
+
+function normalizeAuthRedirectTarget(redirectTo?: string) {
+  if (!redirectTo || redirectTo === '/dashboard' || redirectTo === '/dashboard/') {
+    return DEFAULT_AUTH_REDIRECT
+  }
+  return redirectTo
+}
 
 function getSavedLanguage(user: User): string | undefined {
   const userData = user as Record<string, unknown>
@@ -56,12 +66,23 @@ export function useAuthRedirect() {
    * @param redirectTo - Redirect path after login
    */
   const handleLoginSuccess = async (
-    userData?: { id?: number } | null,
+    userData?: Partial<User> | null,
     redirectTo?: string
   ) => {
     // Save user ID if available
     if (userData?.id) {
       saveUserId(userData.id)
+    }
+
+    // The login response already contains the session user basics. Persist it
+    // before the post-login navigation so auth guards do not bounce the user
+    // back to sign-in if the follow-up /api/user/self request is delayed.
+    if (
+      userData?.id &&
+      typeof userData.username === 'string' &&
+      typeof userData.role === 'number'
+    ) {
+      auth.setUser(userData as User)
     }
 
     // Fetch and set user data
@@ -88,7 +109,7 @@ export function useAuthRedirect() {
     }
 
     // Navigate to target page
-    const targetPath = redirectTo || '/dashboard'
+    const targetPath = normalizeAuthRedirectTarget(redirectTo)
     navigate({ to: targetPath, replace: true })
   }
 
