@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -28,6 +29,8 @@ const (
 
 	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
 	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
+
+	channelAffinityKeySourceResponsesState = "responses_state"
 )
 
 var (
@@ -329,9 +332,107 @@ func extractChannelAffinityValue(c *gin.Context, src operation_setting.ChannelAf
 		default:
 			return strings.TrimSpace(res.Raw)
 		}
+	case channelAffinityKeySourceResponsesState:
+		value, _ := extractResponsesStateAffinityValue(c)
+		return value
 	default:
 		return ""
 	}
+}
+
+func extractResponsesStateAffinityValue(c *gin.Context) (string, string) {
+	if c == nil {
+		return "", ""
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return "", ""
+	}
+	body, err := storage.Bytes()
+	if err != nil || len(body) == 0 {
+		return "", ""
+	}
+
+	if value := gjsonScalarString(gjson.GetBytes(body, "previous_response_id")); value != "" {
+		return value, "previous_response_id"
+	}
+	if value := extractResponsesConversationAffinityValue(body); value != "" {
+		return value, "conversation"
+	}
+	if value := extractResponsesItemReferenceAffinityValue(body); value != "" {
+		return value, "input.item_reference.id"
+	}
+	return "", ""
+}
+
+func gjsonScalarString(res gjson.Result) string {
+	if !res.Exists() {
+		return ""
+	}
+	switch res.Type {
+	case gjson.String, gjson.Number, gjson.True, gjson.False:
+		return strings.TrimSpace(res.String())
+	default:
+		return ""
+	}
+}
+
+func extractResponsesConversationAffinityValue(body []byte) string {
+	if value := gjsonScalarString(gjson.GetBytes(body, "conversation")); value != "" {
+		return value
+	}
+	return gjsonScalarString(gjson.GetBytes(body, "conversation.id"))
+}
+
+func extractResponsesItemReferenceAffinityValue(body []byte) string {
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() || input.Raw == "" {
+		return ""
+	}
+	var payload any
+	if err := common.Unmarshal([]byte(input.Raw), &payload); err != nil {
+		return ""
+	}
+	return findFirstResponsesItemReferenceID(payload)
+}
+
+func findFirstResponsesItemReferenceID(value any) string {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			if id := findFirstResponsesItemReferenceID(item); id != "" {
+				return id
+			}
+		}
+	case map[string]any:
+		if strings.EqualFold(strings.TrimSpace(common.Interface2String(v["type"])), "item_reference") {
+			if id := strings.TrimSpace(common.Interface2String(v["id"])); id != "" {
+				return id
+			}
+		}
+		for _, item := range v {
+			if id := findFirstResponsesItemReferenceID(item); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func shouldUseResponsesStateAffinityFallback(rule operation_setting.ChannelAffinityRule, path string) bool {
+	if !strings.Contains(path, "/responses") {
+		return false
+	}
+	for _, src := range rule.KeySources {
+		if strings.EqualFold(strings.TrimSpace(src.Type), channelAffinityKeySourceResponsesState) {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(src.Type), "gjson") &&
+			strings.EqualFold(strings.TrimSpace(src.Path), "prompt_cache_key") {
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(rule.Name)), "codex")
 }
 
 func buildChannelAffinityCacheKeySuffix(rule operation_setting.ChannelAffinityRule, modelName string, usingGroup string, affinityValue string) string {
@@ -580,6 +681,16 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 				break
 			}
 		}
+		if affinityValue == "" && shouldUseResponsesStateAffinityFallback(rule, path) {
+			stateValue, statePath := extractResponsesStateAffinityValue(c)
+			if stateValue != "" {
+				affinityValue = stateValue
+				usedSource = operation_setting.ChannelAffinityKeySource{
+					Type: channelAffinityKeySourceResponsesState,
+					Path: statePath,
+				}
+			}
+		}
 		if affinityValue == "" {
 			continue
 		}
@@ -737,6 +848,174 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 	if err := cache.SetWithTTL(cacheKey, channelID, time.Duration(ttlSeconds)*time.Second); err != nil {
 		common.SysError(fmt.Sprintf("channel affinity cache set failed: key=%s, err=%v", cacheKey, err))
 	}
+}
+
+func RecordResponsesStateChannelAffinity(c *gin.Context, channelID int, modelName string, usingGroup string, values []string) {
+	if channelID <= 0 {
+		return
+	}
+	setting := operation_setting.GetChannelAffinitySetting()
+	if setting == nil || !setting.Enabled {
+		return
+	}
+	values = normalizeChannelAffinityValues(values)
+	if len(values) == 0 {
+		return
+	}
+	if setting.SwitchOnSuccess && c != nil {
+		if successChannelID := c.GetInt("channel_id"); successChannelID > 0 {
+			channelID = successChannelID
+		}
+	}
+
+	path := ""
+	userAgent := ""
+	if c != nil && c.Request != nil {
+		userAgent = c.Request.UserAgent()
+		if c.Request.URL != nil {
+			path = c.Request.URL.Path
+		}
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" && c != nil {
+		modelName = strings.TrimSpace(c.GetString(string(constant.ContextKeyOriginalModel)))
+	}
+	usingGroup = normalizeChannelAffinityUsingGroup(c, usingGroup)
+
+	cache := getChannelAffinityCache()
+	for _, rule := range setting.Rules {
+		if !matchAnyRegexCached(rule.ModelRegex, modelName) {
+			continue
+		}
+		if len(rule.PathRegex) > 0 && !matchAnyRegexCached(rule.PathRegex, path) {
+			continue
+		}
+		if len(rule.UserAgentInclude) > 0 && !matchAnyIncludeFold(rule.UserAgentInclude, userAgent) {
+			continue
+		}
+		ttlSeconds := rule.TTLSeconds
+		if ttlSeconds <= 0 {
+			ttlSeconds = setting.DefaultTTLSeconds
+		}
+		if ttlSeconds <= 0 {
+			ttlSeconds = 3600
+		}
+		ttl := time.Duration(ttlSeconds) * time.Second
+		for _, value := range values {
+			if rule.ValueRegex != "" && !matchAnyRegexCached([]string{rule.ValueRegex}, value) {
+				continue
+			}
+			cacheKey := buildChannelAffinityCacheKeySuffix(rule, modelName, usingGroup, value)
+			if err := cache.SetWithTTL(cacheKey, channelID, ttl); err != nil {
+				common.SysError(fmt.Sprintf("responses state channel affinity cache set failed: key=%s, err=%v", cache.FullKey(cacheKey), err))
+			}
+		}
+	}
+}
+
+func normalizeChannelAffinityUsingGroup(c *gin.Context, usingGroup string) string {
+	usingGroup = strings.TrimSpace(usingGroup)
+	if usingGroup != "" && !strings.EqualFold(usingGroup, "auto") {
+		return usingGroup
+	}
+	if c == nil {
+		return usingGroup
+	}
+	if autoGroup := strings.TrimSpace(c.GetString(string(constant.ContextKeyAutoGroup))); autoGroup != "" {
+		return autoGroup
+	}
+	if usingGroup != "" {
+		return usingGroup
+	}
+	return strings.TrimSpace(c.GetString(string(constant.ContextKeyUsingGroup)))
+}
+
+func normalizeChannelAffinityValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func CollectOpenAIResponsesAffinityAliases(resp *dto.OpenAIResponsesResponse) []string {
+	if resp == nil {
+		return nil
+	}
+	values := make([]string, 0, 1+len(resp.Output))
+	values = append(values, resp.ID)
+	values = append(values, collectResponsesOutputAffinityAliases(resp.Output)...)
+	return normalizeChannelAffinityValues(values)
+}
+
+func CollectResponsesCompactionAffinityAliases(resp *dto.OpenAIResponsesCompactionResponse) []string {
+	if resp == nil {
+		return nil
+	}
+	values := []string{resp.ID}
+	values = append(values, collectResponsesOutputRawAffinityAliases(resp.Output)...)
+	return normalizeChannelAffinityValues(values)
+}
+
+func collectResponsesOutputAffinityAliases(outputs []dto.ResponsesOutput) []string {
+	if len(outputs) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(outputs))
+	for _, output := range outputs {
+		if output.ID != "" {
+			values = append(values, output.ID)
+		}
+	}
+	return values
+}
+
+func collectResponsesOutputRawAffinityAliases(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var outputs []dto.ResponsesOutput
+	if err := common.Unmarshal(raw, &outputs); err == nil {
+		return collectResponsesOutputAffinityAliases(outputs)
+	}
+	var output dto.ResponsesOutput
+	if err := common.Unmarshal(raw, &output); err == nil {
+		return collectResponsesOutputAffinityAliases([]dto.ResponsesOutput{output})
+	}
+	return nil
+}
+
+func IsResponsesStateResourceMismatchError(err *types.NewAPIError) bool {
+	if err == nil || err.StatusCode != 400 {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "different azure openai resource") {
+		return false
+	}
+	if !strings.Contains(msg, "created under") || (!strings.Contains(msg, "requested item") && !strings.Contains(msg, "requested response")) {
+		return false
+	}
+	return true
+}
+
+func ClearChannelAffinityOnResponsesStateMismatch(c *gin.Context, err *types.NewAPIError) bool {
+	if !IsResponsesStateResourceMismatchError(err) {
+		return false
+	}
+	return ClearCurrentChannelAffinityCache(c)
 }
 
 type ChannelAffinityUsageCacheStats struct {

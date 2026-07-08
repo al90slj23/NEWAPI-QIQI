@@ -150,6 +150,10 @@ export function SidebarModulesSection({
         title: t('System settings'),
         description: t('Advanced platform configuration.'),
       },
+      qiq: {
+        title: t('Qiqi Settings'),
+        description: t('Custom module'),
+      },
       subscription: {
         title: t('Subscription Management'),
         description: t('Manage subscription plans and pricing.'),

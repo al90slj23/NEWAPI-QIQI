@@ -332,3 +332,104 @@ func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	_, exists = info.RuntimeHeadersOverride["x-codex-turn-metadata"]
 	require.False(t, exists)
 }
+
+func TestGetPreferredChannelByAffinity_ResponsesPreviousResponseIDImplicitFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rule := operation_setting.ChannelAffinityRule{
+		Name:       "legacy-codex-trace",
+		ModelRegex: []string{"^gpt-.*$"},
+		PathRegex:  []string{"/v1/responses"},
+		KeySources: []operation_setting.ChannelAffinityKeySource{
+			{Type: "gjson", Path: "prompt_cache_key"},
+		},
+		SkipRetryOnFailure: true,
+		IncludeUsingGroup:  true,
+		IncludeRuleName:    true,
+	}
+	responseID := fmt.Sprintf("resp_legacy_%d", time.Now().UnixNano())
+	cacheKeySuffix := buildChannelAffinityCacheKeySuffix(rule, "gpt-5", "default", responseID)
+
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 9529, time.Minute))
+	t.Cleanup(func() {
+		_, _ = cache.DeleteMany([]string{cacheKeySuffix})
+	})
+
+	setting := operation_setting.GetChannelAffinitySetting()
+	originalRules := setting.Rules
+	setting.Rules = []operation_setting.ChannelAffinityRule{rule}
+	t.Cleanup(func() {
+		setting.Rules = originalRules
+	})
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"previous_response_id":"%s"}`, responseID)))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	channelID, found := GetPreferredChannelByAffinity(ctx, "gpt-5", "default")
+	require.True(t, found)
+	require.Equal(t, 9529, channelID)
+
+	meta, ok := getChannelAffinityMeta(ctx)
+	require.True(t, ok)
+	require.Equal(t, channelAffinityKeySourceResponsesState, meta.KeySourceType)
+	require.Equal(t, "previous_response_id", meta.KeySourcePath)
+	require.Equal(t, buildChannelAffinityKeyHint(responseID), meta.KeyHint)
+}
+
+func TestRecordResponsesStateChannelAffinity_RecordsResponseAndItemAliases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rule := operation_setting.ChannelAffinityRule{
+		Name:       "responses-state-alias",
+		ModelRegex: []string{"^gpt-.*$"},
+		PathRegex:  []string{"/v1/responses"},
+		KeySources: []operation_setting.ChannelAffinityKeySource{
+			{Type: "gjson", Path: "prompt_cache_key"},
+		},
+		SkipRetryOnFailure: true,
+		IncludeUsingGroup:  true,
+		IncludeRuleName:    true,
+	}
+	responseID := fmt.Sprintf("resp_alias_%d", time.Now().UnixNano())
+	itemID := fmt.Sprintf("msg_alias_%d", time.Now().UnixNano())
+	responseKeySuffix := buildChannelAffinityCacheKeySuffix(rule, "gpt-5", "default", responseID)
+	itemKeySuffix := buildChannelAffinityCacheKeySuffix(rule, "gpt-5", "default", itemID)
+
+	cache := getChannelAffinityCache()
+	t.Cleanup(func() {
+		_, _ = cache.DeleteMany([]string{responseKeySuffix, itemKeySuffix})
+	})
+
+	setting := operation_setting.GetChannelAffinitySetting()
+	originalRules := setting.Rules
+	setting.Rules = []operation_setting.ChannelAffinityRule{rule}
+	t.Cleanup(func() {
+		setting.Rules = originalRules
+	})
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"input":"hi"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RecordResponsesStateChannelAffinity(ctx, 9530, "gpt-5", "default", []string{responseID, itemID})
+
+	prevCtxRecorder := httptest.NewRecorder()
+	prevCtx, _ := gin.CreateTestContext(prevCtxRecorder)
+	prevCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"previous_response_id":"%s"}`, responseID)))
+	prevCtx.Request.Header.Set("Content-Type", "application/json")
+	channelID, found := GetPreferredChannelByAffinity(prevCtx, "gpt-5", "default")
+	require.True(t, found)
+	require.Equal(t, 9530, channelID)
+
+	itemCtxRecorder := httptest.NewRecorder()
+	itemCtx, _ := gin.CreateTestContext(itemCtxRecorder)
+	itemCtx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(fmt.Sprintf(`{"input":[{"type":"item_reference","id":"%s"}]}`, itemID)))
+	itemCtx.Request.Header.Set("Content-Type", "application/json")
+	channelID, found = GetPreferredChannelByAffinity(itemCtx, "gpt-5", "default")
+	require.True(t, found)
+	require.Equal(t, 9530, channelID)
+}

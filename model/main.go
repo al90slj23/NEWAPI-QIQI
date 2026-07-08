@@ -277,6 +277,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&ContextRequestLog{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -331,6 +332,7 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
+		{&ContextRequestLog{}, "ContextRequestLog"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
@@ -392,7 +394,7 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	return LOG_DB.AutoMigrate(&Log{}, &ContextRequestLog{})
 }
 
 func migrateClickHouseLogDB() error {
@@ -400,7 +402,13 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
-	return syncClickHouseLogTTL(ttlDays)
+	if err := LOG_DB.Exec(clickHouseContextRequestLogCreateTableSQL(ttlDays)).Error; err != nil {
+		return err
+	}
+	if err := syncClickHouseLogTTL(ttlDays); err != nil {
+		return err
+	}
+	return syncClickHouseContextRequestLogTTL(ttlDays)
 }
 
 func clickHouseLogTTLDays() int {
@@ -456,24 +464,74 @@ ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
 }
 
 func syncClickHouseLogTTL(ttlDays int) error {
+	return syncClickHouseTableTTL("logs", ttlDays)
+}
+
+func clickHouseContextRequestLogCreateTableSQL(ttlDays int) string {
+	return fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS qiqi_context_request_logs (
+	id Int64 DEFAULT 0,
+	user_id Int32 DEFAULT 0,
+	created_at Int64 DEFAULT 0,
+	request_id String DEFAULT '',
+	method String DEFAULT '',
+	path String DEFAULT '',
+	ip String DEFAULT '',
+	user_agent String DEFAULT '',
+	username String DEFAULT '',
+	token_id Int32 DEFAULT 0,
+	token_name String DEFAULT '',
+	model_name String DEFAULT '',
+	`+"`group`"+` String DEFAULT '',
+	is_stream UInt8 DEFAULT 0,
+	status_code Int32 DEFAULT 0,
+	latency_ms Int64 DEFAULT 0,
+	error String DEFAULT '',
+	channel_id Int32 DEFAULT 0,
+	channel_name String DEFAULT '',
+	channel_type Int32 DEFAULT 0,
+	node_name String DEFAULT '',
+	request_headers String DEFAULT '',
+	response_headers String DEFAULT '',
+	request_body String DEFAULT '',
+	request_body_encoding String DEFAULT '',
+	request_body_size Int64 DEFAULT 0,
+	response_body String DEFAULT '',
+	response_body_encoding String DEFAULT '',
+	response_body_size Int64 DEFAULT 0
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(toDateTime(created_at))
+ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
+}
+
+func syncClickHouseContextRequestLogTTL(ttlDays int) error {
+	return syncClickHouseTableTTL("qiqi_context_request_logs", ttlDays)
+}
+
+func syncClickHouseTableTTL(tableName string, ttlDays int) error {
 	expression := clickHouseLogTTLExpression(ttlDays)
 	if expression != "" {
-		return LOG_DB.Exec("ALTER TABLE logs MODIFY TTL " + expression).Error
+		return LOG_DB.Exec(fmt.Sprintf("ALTER TABLE %s MODIFY TTL %s", tableName, expression)).Error
 	}
 
-	hasTTL, err := clickHouseLogTableHasTTL()
+	hasTTL, err := clickHouseTableHasTTL(tableName)
 	if err != nil {
 		return err
 	}
 	if !hasTTL {
 		return nil
 	}
-	return LOG_DB.Exec("ALTER TABLE logs REMOVE TTL").Error
+	return LOG_DB.Exec(fmt.Sprintf("ALTER TABLE %s REMOVE TTL", tableName)).Error
 }
 
 func clickHouseLogTableHasTTL() (bool, error) {
+	return clickHouseTableHasTTL("logs")
+}
+
+func clickHouseTableHasTTL(tableName string) (bool, error) {
 	var createTableSQL string
-	if err := LOG_DB.Raw("SHOW CREATE TABLE logs").Scan(&createTableSQL).Error; err != nil {
+	if err := LOG_DB.Raw("SHOW CREATE TABLE " + tableName).Scan(&createTableSQL).Error; err != nil {
 		return false, err
 	}
 	return clickHouseCreateTableHasTTL(createTableSQL), nil

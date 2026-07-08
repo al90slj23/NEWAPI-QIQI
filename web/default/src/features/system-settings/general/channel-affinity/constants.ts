@@ -61,7 +61,11 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate> = {
     name: 'codex cli trace',
     model_regex: ['^gpt-.*$'],
     path_regex: ['/v1/responses'],
-    key_sources: [{ type: 'gjson', path: 'prompt_cache_key' }],
+    key_sources: [
+      { type: 'gjson', path: 'prompt_cache_key' },
+      { type: 'gjson', path: 'previous_response_id' },
+      { type: 'gjson', path: 'input.#(type=="item_reference").id' },
+    ],
     param_override_template: buildPassHeadersTemplate(
       CODEX_CLI_HEADER_PASSTHROUGH_HEADERS
     ),

@@ -39,6 +39,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
 		c.Set("image_generation_call_size", responsesResponse.GetSize())
 	}
+	recordResponsesStateChannelAffinity(c, info, service.CollectOpenAIResponsesAffinityAliases(&responsesResponse))
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -78,6 +79,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	var affinityAliases []string
+	addAffinityAliases := func(values ...string) {
+		affinityAliases = append(affinityAliases, values...)
+	}
+	addResponseAffinityAliases := func(response *dto.OpenAIResponsesResponse) {
+		addAffinityAliases(service.CollectOpenAIResponsesAffinityAliases(response)...)
+	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -89,6 +97,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		sendResponsesStreamData(c, streamResponse, data)
+		addResponseAffinityAliases(streamResponse.Response)
+		if streamResponse.Item != nil {
+			addAffinityAliases(streamResponse.Item.ID)
+		}
+		if streamResponse.ItemID != "" {
+			addAffinityAliases(streamResponse.ItemID)
+		}
 		switch streamResponse.Type {
 		case "response.completed":
 			if streamResponse.Response != nil {
@@ -129,6 +144,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+	recordResponsesStateChannelAffinity(c, info, affinityAliases)
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量
@@ -147,4 +163,11 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+func recordResponsesStateChannelAffinity(c *gin.Context, info *relaycommon.RelayInfo, aliases []string) {
+	if info == nil {
+		return
+	}
+	service.RecordResponsesStateChannelAffinity(c, info.ChannelId, info.OriginModelName, info.UsingGroup, aliases)
 }
