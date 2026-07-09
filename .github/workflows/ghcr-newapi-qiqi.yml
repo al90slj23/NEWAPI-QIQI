@@ -12,7 +12,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: al90slj23/newapi-qiqi
+  IMAGE_NAME: lickjcr/newapi-qiqi
 
 jobs:
   build:
@@ -67,6 +67,6 @@ jobs:
         run: |
           echo "### NEWAPI-QIQI image" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ghcr.io/al90slj23/newapi-qiqi:main" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ghcr.io/al90slj23/newapi-qiqi:${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- ghcr.io/al90slj23/newapi-qiqi:sha-${{ steps.version.outputs.short_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ghcr.io/lickjcr/newapi-qiqi:main" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ghcr.io/lickjcr/newapi-qiqi:${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ghcr.io/lickjcr/newapi-qiqi:sha-${{ steps.version.outputs.short_sha }}" >> "$GITHUB_STEP_SUMMARY"

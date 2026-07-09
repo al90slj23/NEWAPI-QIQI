@@ -74,7 +74,7 @@ load_dotenv_defaults() {
 
 load_dotenv_defaults
 
-GITHUB_REPO="${QIQI_GITHUB_REPO:-al90slj23/NEWAPI-QIQI}"
+GITHUB_REPO="${QIQI_GITHUB_REPO:-LickJCR/NEWAPI-QIQI}"
 GIT_REMOTE="${QIQI_GIT_REMOTE:-qiqi}"
 GIT_BRANCH="${QIQI_GIT_BRANCH:-main}"
 GITHUB_WORKFLOW_FILE="${QIQI_GITHUB_WORKFLOW_FILE:-ghcr-newapi-qiqi.yml}"
@@ -86,7 +86,7 @@ if [ -n "${QIQI_IMAGE:-}" ]; then
     IMAGE="$QIQI_IMAGE"
     IMAGE_TAG_MODE="${QIQI_IMAGE_TAG_MODE:-fixed}"
 else
-    IMAGE="ghcr.io/al90slj23/newapi-qiqi:main"
+    IMAGE="ghcr.io/lickjcr/newapi-qiqi:main"
     IMAGE_TAG_MODE="${QIQI_IMAGE_TAG_MODE:-sha}"
 fi
 IMAGE_REPO="${IMAGE%:*}"
@@ -116,8 +116,11 @@ if [ -n "${QIQI_SSH_KEY:-}" ]; then
 elif [ -f "${HOME}/.ssh/qiqi" ]; then
     SSH_KEY="${HOME}/.ssh/qiqi"
 else
-    SSH_KEY="${HOME}/.ssh/al90slj23"
+    SSH_KEY=""
 fi
+case "$SSH_KEY" in
+    "~/"*) SSH_KEY="${HOME}/${SSH_KEY#\~/}" ;;
+esac
 SSH_CONFIG_FILE="${QIQI_SSH_CONFIG_FILE:-/dev/null}"
 SSH_PASSWORD="${QIQI_DEPLOY_PASSWORD:-${SERVER_ROOT_PASSWORD:-}}"
 SSH_USE_SSHPASS="false"

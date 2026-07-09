@@ -194,7 +194,7 @@ php artisan view:fix        # 自动修复不一致
 - `icon` → `help-circle`（问号图标）
 - `sort_order` → `999`（排最后）
 
-**实践案例**：YYSYYF 项目 `yys_manifest_list` 表
+**实践案例**：LickJCR 项目 `yys_manifest_list` 表
 - 150+ 条记录覆盖 8 个业务模块
 - 树形菜单通过 `parent_path` 构建
 - Redis 缓存 + 1 小时 TTL

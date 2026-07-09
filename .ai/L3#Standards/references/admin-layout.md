@@ -829,9 +829,9 @@ D.ContentArea.vue
 
 ---
 
-## 与 YYSYYF 的映射关系
+## 与 LickJCR 的映射关系
 
-| ZERO | YYSYYF | 职责 |
+| ZERO | LickJCR | 职责 |
 |------|--------|------|
 | A区 | A区 | 顶部栏 |
 | B区 | D区 | 智能动态侧边栏（文件系统 + manifest_list） |
@@ -839,9 +839,9 @@ D.ContentArea.vue
 | D区 | F区 | 主内容区 |
 
 **简化点**:
-- 移除 YYSYYF 的 B区（一级菜单横向导航）
-- 移除 YYSYYF 的 C区（标签页栏）
-- 移除 YYSYYF 的 D2区（子侧边栏）
+- 移除 LickJCR 的 B区（一级菜单横向导航）
+- 移除 LickJCR 的 C区（标签页栏）
+- 移除 LickJCR 的 D2区（子侧边栏）
 - 简化缓存策略
 - 简化加载编排
 

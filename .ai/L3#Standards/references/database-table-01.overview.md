@@ -2,7 +2,7 @@
 
 > **版本**: 1.0.0
 > **创建时间**: 2025-12-31
-> **基于**: YYSYYF 项目 DatabaseTablePro 组件
+> **基于**: LickJCR 项目 DatabaseTablePro 组件
 
 ---
 

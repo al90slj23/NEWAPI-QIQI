@@ -2,7 +2,7 @@
 
 ## 背景
 
-本次发布流程为：本地 `./qiqi.sh 1` 推送到 GitHub，GitHub Actions 构建 `ghcr.io/al90slj23/newapi-qiqi` 镜像，然后服务器 `na.q.srl` 拉取镜像并重建 Docker Compose 服务。
+本次发布流程为：本地 `./qiqi.sh 1` 推送到 GitHub，GitHub Actions 构建 `ghcr.io/lickjcr/newapi-qiqi` 镜像，然后服务器 `na.q.srl` 拉取镜像并重建 Docker Compose 服务。
 
 GitHub Actions 构建本身成功，实际失败点集中在 SSH 路由、SSH key、远端 compose 文件选择和端口占用。
 
@@ -11,7 +11,7 @@ GitHub Actions 构建本身成功，实际失败点集中在 SSH 路由、SSH ke
 项目 `.env` 必须显式包含 qiqi 部署配置：
 
 ```env
-QIQI_SSH_KEY=/Users/al90slj23/.ssh/qiqi
+QIQI_SSH_KEY=~/.ssh/qiqi
 QIQI_DEPLOY_USE_IP=true
 QIQI_DEPLOY_DIR=/opt/new-api
 QIQI_COMPOSE_FILE=docker-compose.prod.yml
@@ -22,7 +22,7 @@ QIQI_COMPOSE_SERVICE=new-api
 
 - 本机访问 `na.q.srl` 时可能解析到 `198.18.0.20`，不是生产服务器真实 SSH 入口。
 - 生产服务器真实 IP 来自 `.env` 的 `SERVER_IP=38.148.249.92`。
-- 可登录生产服务器的 key 是 `~/.ssh/qiqi`，不是 `~/.ssh/al90slj23`。
+- 可登录生产服务器的 key 是 `~/.ssh/qiqi`，不要依赖其他默认 SSH 身份。
 
 ## 远端生产栈事实
 
@@ -53,7 +53,7 @@ QIQI_COMPOSE_SERVICE=new-api
 说明网络已到服务器，但 key 或认证方式不对。本项目应使用：
 
 ```bash
-ssh -i /Users/al90slj23/.ssh/qiqi root@38.148.249.92
+ssh -i ~/.ssh/qiqi root@38.148.249.92
 ```
 
 ### 3. `Bind for 127.0.0.1:3000 failed: port is already allocated`
