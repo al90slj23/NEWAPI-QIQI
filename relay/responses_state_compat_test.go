@@ -44,7 +44,7 @@ func TestMissingResponsesReasoningItemIDRejectsUnrelatedBadRequest(t *testing.T)
 func TestRetryMissingResponsesReasoningItemRetriesOnceAndRecordsEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(nil)
-	body := []byte(`{"model":"gpt-5.5","input":[{"type":"reasoning","id":"rs_missing","summary":[],"content":[]},{"role":"user","content":"continue"}]}`)
+	body := []byte(`{"model":"gpt-5.5","input":[{"type":"reasoning","id":"rs_missing","summary":[],"content":[]},{"type":"reasoning","id":"rs_also_missing","summary":[],"content":[]},{"role":"user","content":"continue"}]}`)
 	storage, err := common.CreateBodyStorage(body)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = storage.Close() })
@@ -72,6 +72,7 @@ func TestRetryMissingResponsesReasoningItemRetriesOnceAndRecordsEvent(t *testing
 			retryBody, readErr := io.ReadAll(reader)
 			require.NoError(t, readErr)
 			require.NotContains(t, string(retryBody), "rs_missing")
+			require.NotContains(t, string(retryBody), "rs_also_missing")
 			require.Contains(t, string(retryBody), "continue")
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 		},
@@ -94,7 +95,8 @@ func TestRetryMissingResponsesReasoningItemRetriesOnceAndRecordsEvent(t *testing
 	require.Equal(t, service.RelayCompatibilityEventTypeApplied, events[0].EventType)
 	require.Equal(t, "accepted", events[0].Outcome)
 	require.Equal(t, "rs_missing", events[0].ItemID)
-	require.Equal(t, 1, events[0].Count)
+	require.Equal(t, 2, events[0].Count)
+	require.Equal(t, "remove_all_empty_reasoning_references_and_retry_same_channel", events[0].Action)
 
 	_, _, retried = retryMissingResponsesReasoningItem(
 		ctx,

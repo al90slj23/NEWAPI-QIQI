@@ -21,6 +21,12 @@ var ResponsesMissingReasoningItemRule = RelayCompatibilityRule{
 	SettingKey: "qiqi_setting.responses_missing_reasoning_item_retry_enabled",
 }
 
+var ResponsesStreamErrorRetryRule = RelayCompatibilityRule{
+	ID:         "QIQI-EC-002",
+	Key:        "responses_stream_error_retry",
+	SettingKey: "qiqi_setting.responses_stream_error_retry_enabled",
+}
+
 type RelayCompatibilityEvent struct {
 	RuleID     string `json:"rule_id"`
 	Key        string `json:"key"`

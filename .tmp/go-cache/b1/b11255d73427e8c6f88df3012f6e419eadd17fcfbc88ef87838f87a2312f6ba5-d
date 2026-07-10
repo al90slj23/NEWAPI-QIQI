@@ -1,0 +1,4 @@
+./clickhouse.go
+./create.go
+./migrator.go
+./update.go

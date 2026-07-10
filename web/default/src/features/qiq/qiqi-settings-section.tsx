@@ -29,8 +29,11 @@ import {
   FormControl,
   FormDescription,
   FormField,
+  FormItem,
   FormLabel,
+  FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -42,17 +45,33 @@ import { SettingsPageFormActions } from '@/features/system-settings/components/s
 import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { useResetForm } from '@/features/system-settings/hooks/use-reset-form'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
+import { safeNumberFieldProps } from '@/features/system-settings/utils/numeric-field'
 
-import { RESPONSES_MISSING_REASONING_ITEM_RULE } from './enhanced-compatibility-rules'
+import {
+  RESPONSES_MISSING_REASONING_ITEM_RULE,
+  RESPONSES_STREAM_ERROR_RETRY_RULE,
+} from './enhanced-compatibility-rules'
 
 const qiqiContextRequestLoggingOption =
   'qiqi_setting.context_request_logging_enabled' as const
 const qiqiResponsesMissingReasoningItemRetryOption =
   RESPONSES_MISSING_REASONING_ITEM_RULE.settingKey
+const qiqiResponsesStreamErrorRetryOption =
+  RESPONSES_STREAM_ERROR_RETRY_RULE.settingKey
+const qiqiResponsesStreamErrorRetryTimesOption =
+  RESPONSES_STREAM_ERROR_RETRY_RULE.retryTimesSettingKey
 
 const qiqiSettingsSchema = z.object({
   contextRequestLoggingEnabled: z.boolean(),
   responsesMissingReasoningItemRetryEnabled: z.boolean(),
+  responsesStreamErrorRetryEnabled: z.boolean(),
+  responsesStreamErrorRetryTimes: z
+    .number({
+      error: 'Retry attempts must be an integer from 0 to 5.',
+    })
+    .int('Retry attempts must be an integer from 0 to 5.')
+    .min(0, 'Retry attempts must be an integer from 0 to 5.')
+    .max(5, 'Retry attempts must be an integer from 0 to 5.'),
 })
 
 type QiqiSettingsFormValues = z.infer<typeof qiqiSettingsSchema>
@@ -61,6 +80,8 @@ type QiqiSettingsSectionProps = {
   defaultValues: {
     [qiqiContextRequestLoggingOption]: boolean
     [qiqiResponsesMissingReasoningItemRetryOption]: boolean
+    [qiqiResponsesStreamErrorRetryOption]: boolean
+    [qiqiResponsesStreamErrorRetryTimesOption]: number
   }
 }
 
@@ -73,6 +94,10 @@ export function QiqiSettingsSection(props: QiqiSettingsSectionProps) {
       props.defaultValues[qiqiContextRequestLoggingOption],
     responsesMissingReasoningItemRetryEnabled:
       props.defaultValues[qiqiResponsesMissingReasoningItemRetryOption],
+    responsesStreamErrorRetryEnabled:
+      props.defaultValues[qiqiResponsesStreamErrorRetryOption],
+    responsesStreamErrorRetryTimes:
+      props.defaultValues[qiqiResponsesStreamErrorRetryTimesOption],
   }
 
   const form = useForm<QiqiSettingsFormValues>({
@@ -83,6 +108,9 @@ export function QiqiSettingsSection(props: QiqiSettingsSectionProps) {
   const contextLoggingEnabled = form.watch('contextRequestLoggingEnabled')
   const responsesMissingReasoningItemRetryEnabled = form.watch(
     'responsesMissingReasoningItemRetryEnabled'
+  )
+  const responsesStreamErrorRetryEnabled = form.watch(
+    'responsesStreamErrorRetryEnabled'
   )
 
   useResetForm(form, formDefaults)
@@ -99,6 +127,17 @@ export function QiqiSettingsSection(props: QiqiSettingsSectionProps) {
         value: values.responsesMissingReasoningItemRetryEnabled,
         savedValue:
           props.defaultValues[qiqiResponsesMissingReasoningItemRetryOption],
+      },
+      {
+        key: qiqiResponsesStreamErrorRetryOption,
+        value: values.responsesStreamErrorRetryEnabled,
+        savedValue: props.defaultValues[qiqiResponsesStreamErrorRetryOption],
+      },
+      {
+        key: qiqiResponsesStreamErrorRetryTimesOption,
+        value: values.responsesStreamErrorRetryTimes,
+        savedValue:
+          props.defaultValues[qiqiResponsesStreamErrorRetryTimesOption],
       },
     ].filter((entry) => entry.value !== entry.savedValue)
 
@@ -176,50 +215,139 @@ export function QiqiSettingsSection(props: QiqiSettingsSectionProps) {
             </TabsContent>
 
             <TabsContent value='enhanced-compatibility' className='pt-4'>
-              <FormField
-                control={form.control}
-                name='responsesMissingReasoningItemRetryEnabled'
-                render={({ field }) => (
-                  <SettingsSwitchItem className='bg-muted/30 items-start rounded-md px-3 py-3 sm:px-4'>
-                    <SettingsSwitchContent className='max-w-xl space-y-1'>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <Badge variant='outline' className='font-mono'>
-                          {RESPONSES_MISSING_REASONING_ITEM_RULE.id}
-                        </Badge>
-                        <FormLabel>
-                          {t(
-                            RESPONSES_MISSING_REASONING_ITEM_RULE.shortNameKey
-                          )}
-                        </FormLabel>
-                        <Badge variant='secondary'>
-                          {t(
-                            responsesMissingReasoningItemRetryEnabled
-                              ? 'Enabled'
-                              : 'Disabled'
-                          )}
-                        </Badge>
-                        {dirtyFields.responsesMissingReasoningItemRetryEnabled ? (
-                          <Badge variant='outline'>
-                            {t('Unsaved changes')}
+              <div className='space-y-3'>
+                <FormField
+                  control={form.control}
+                  name='responsesMissingReasoningItemRetryEnabled'
+                  render={({ field }) => (
+                    <SettingsSwitchItem className='bg-muted/30 items-start rounded-md px-3 py-3 sm:px-4'>
+                      <SettingsSwitchContent className='max-w-xl space-y-1'>
+                        <div className='flex flex-wrap items-center gap-2'>
+                          <Badge variant='outline' className='font-mono'>
+                            {RESPONSES_MISSING_REASONING_ITEM_RULE.id}
                           </Badge>
-                        ) : null}
-                      </div>
-                      <FormDescription>
-                        {t(
-                          RESPONSES_MISSING_REASONING_ITEM_RULE.descriptionKey
-                        )}
-                      </FormDescription>
-                    </SettingsSwitchContent>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={updateOption.isPending || isSubmitting}
-                      />
-                    </FormControl>
-                  </SettingsSwitchItem>
-                )}
-              />
+                          <FormLabel>
+                            {t(
+                              RESPONSES_MISSING_REASONING_ITEM_RULE.shortNameKey
+                            )}
+                          </FormLabel>
+                          <Badge variant='secondary'>
+                            {t(
+                              responsesMissingReasoningItemRetryEnabled
+                                ? 'Enabled'
+                                : 'Disabled'
+                            )}
+                          </Badge>
+                          {dirtyFields.responsesMissingReasoningItemRetryEnabled ? (
+                            <Badge variant='outline'>
+                              {t('Unsaved changes')}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <FormDescription className='text-pretty'>
+                          {t(
+                            RESPONSES_MISSING_REASONING_ITEM_RULE.descriptionKey
+                          )}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={updateOption.isPending || isSubmitting}
+                        />
+                      </FormControl>
+                    </SettingsSwitchItem>
+                  )}
+                />
+
+                <div className='bg-muted/30 space-y-4 rounded-md px-3 py-3 sm:px-4'>
+                  <FormField
+                    control={form.control}
+                    name='responsesStreamErrorRetryEnabled'
+                    render={({ field }) => (
+                      <SettingsSwitchItem className='items-start p-0'>
+                        <SettingsSwitchContent className='max-w-xl space-y-1'>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            <Badge variant='outline' className='font-mono'>
+                              {RESPONSES_STREAM_ERROR_RETRY_RULE.id}
+                            </Badge>
+                            <FormLabel>
+                              {t(
+                                RESPONSES_STREAM_ERROR_RETRY_RULE.shortNameKey
+                              )}
+                            </FormLabel>
+                            <Badge variant='secondary'>
+                              {t(
+                                responsesStreamErrorRetryEnabled
+                                  ? 'Enabled'
+                                  : 'Disabled'
+                              )}
+                            </Badge>
+                            {dirtyFields.responsesStreamErrorRetryEnabled ? (
+                              <Badge variant='outline'>
+                                {t('Unsaved changes')}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <FormDescription className='text-pretty'>
+                            {t(
+                              RESPONSES_STREAM_ERROR_RETRY_RULE.descriptionKey
+                            )}
+                          </FormDescription>
+                        </SettingsSwitchContent>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={updateOption.isPending || isSubmitting}
+                          />
+                        </FormControl>
+                      </SettingsSwitchItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='responsesStreamErrorRetryTimes'
+                    render={({ field }) => (
+                      <FormItem className='max-w-xs'>
+                        <div className='flex flex-wrap items-center gap-2'>
+                          <FormLabel>{t('Retry attempts')}</FormLabel>
+                          <Badge variant='secondary'>
+                            {t('Recommended: 2')}
+                          </Badge>
+                          {dirtyFields.responsesStreamErrorRetryTimes ? (
+                            <Badge variant='outline'>
+                              {t('Unsaved changes')}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={0}
+                            max={5}
+                            step={1}
+                            {...safeNumberFieldProps(field)}
+                            disabled={
+                              !responsesStreamErrorRetryEnabled ||
+                              updateOption.isPending ||
+                              isSubmitting
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription className='text-pretty'>
+                          {t(
+                            'Recommended: 2 retries, for up to 3 total attempts. Allowed range: 0 to 5.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
         </SettingsForm>

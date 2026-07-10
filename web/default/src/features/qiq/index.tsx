@@ -18,17 +18,24 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '@/features/system-settings/components/settings-page'
 
-import { RESPONSES_MISSING_REASONING_ITEM_RULE } from './enhanced-compatibility-rules'
+import {
+  RESPONSES_MISSING_REASONING_ITEM_RULE,
+  RESPONSES_STREAM_ERROR_RETRY_RULE,
+} from './enhanced-compatibility-rules'
 import { QiqiSettingsSection } from './qiqi-settings-section'
 
 type QiqiSettingsValues = {
   'qiqi_setting.context_request_logging_enabled': boolean
   [RESPONSES_MISSING_REASONING_ITEM_RULE.settingKey]: boolean
+  [RESPONSES_STREAM_ERROR_RETRY_RULE.settingKey]: boolean
+  [RESPONSES_STREAM_ERROR_RETRY_RULE.retryTimesSettingKey]: number
 }
 
 const defaultQiqiSettings: QiqiSettingsValues = {
   'qiqi_setting.context_request_logging_enabled': false,
   [RESPONSES_MISSING_REASONING_ITEM_RULE.settingKey]: true,
+  [RESPONSES_STREAM_ERROR_RETRY_RULE.settingKey]: true,
+  [RESPONSES_STREAM_ERROR_RETRY_RULE.retryTimesSettingKey]: 2,
 }
 
 const QIQI_SECTION = 'qiq' as const
@@ -47,6 +54,10 @@ export function QiqiSettings() {
               settings['qiqi_setting.context_request_logging_enabled'],
             [RESPONSES_MISSING_REASONING_ITEM_RULE.settingKey]:
               settings[RESPONSES_MISSING_REASONING_ITEM_RULE.settingKey],
+            [RESPONSES_STREAM_ERROR_RETRY_RULE.settingKey]:
+              settings[RESPONSES_STREAM_ERROR_RETRY_RULE.settingKey],
+            [RESPONSES_STREAM_ERROR_RETRY_RULE.retryTimesSettingKey]:
+              settings[RESPONSES_STREAM_ERROR_RETRY_RULE.retryTimesSettingKey],
           }}
         />
       )}

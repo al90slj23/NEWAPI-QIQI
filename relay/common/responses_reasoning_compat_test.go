@@ -7,27 +7,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRemoveMissingResponsesReasoningItemRemovesOnlyMatchingEmptyItem(t *testing.T) {
+func TestRemoveMissingResponsesReasoningItemsRemovesAllEmptyReferences(t *testing.T) {
 	body := []byte(`{
-		"model":"gpt-5.5",
-		"input":[
-			{"role":"user","content":"keep user content"},
-			{"type":"reasoning","id":"rs_missing","summary":[],"content":[]},
-			{"type":"reasoning","id":"rs_other","summary":[],"content":[]},
-			{"type":"function_call","id":"fc_1","name":"lookup","arguments":"{}"}
-		]
-	}`)
+			"model":"gpt-5.5",
+			"input":[
+				{"role":"user","content":"keep user content"},
+				{"type":"reasoning","id":"rs_missing","summary":[],"content":[]},
+				{"type":"reasoning","id":"rs_other","summary":[],"content":[]},
+				{"type":"reasoning","id":"legacy_reference","summary":[],"content":[]},
+				{"type":"function_call","id":"fc_1","name":"lookup","arguments":"{}"}
+			]
+		}`)
 
-	normalized, removed, err := RemoveMissingResponsesReasoningItem(body, "rs_missing")
+	normalized, removed, err := RemoveMissingResponsesReasoningItems(body, "rs_missing")
 	require.NoError(t, err)
-	require.Equal(t, 1, removed)
+	require.Equal(t, 2, removed)
 	require.NotContains(t, string(normalized), "rs_missing")
-	require.Contains(t, string(normalized), "rs_other")
+	require.NotContains(t, string(normalized), "rs_other")
+	require.Contains(t, string(normalized), "legacy_reference")
 	require.Contains(t, string(normalized), "keep user content")
 	require.Contains(t, string(normalized), "fc_1")
 }
 
-func TestRemoveMissingResponsesReasoningItemPreservesRecoverableReasoning(t *testing.T) {
+func TestRemoveMissingResponsesReasoningItemsRequiresReportedEmptyReference(t *testing.T) {
+	body := []byte(`{"input":[{"type":"reasoning","id":"rs_other","summary":[],"content":[]}]}`)
+
+	normalized, removed, err := RemoveMissingResponsesReasoningItems(body, "rs_missing")
+	require.NoError(t, err)
+	require.Zero(t, removed)
+	require.JSONEq(t, string(body), string(normalized))
+}
+
+func TestRemoveMissingResponsesReasoningItemsPreservesRecoverableReasoning(t *testing.T) {
 	testCases := []struct {
 		name string
 		item string
@@ -53,7 +64,7 @@ func TestRemoveMissingResponsesReasoningItemPreservesRecoverableReasoning(t *tes
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			body := []byte(`{"input":[` + testCase.item + `]}`)
-			normalized, removed, err := RemoveMissingResponsesReasoningItem(body, "rs_missing")
+			normalized, removed, err := RemoveMissingResponsesReasoningItems(body, "rs_missing")
 			require.NoError(t, err)
 			require.Zero(t, removed)
 			require.JSONEq(t, string(body), string(normalized))
@@ -61,9 +72,9 @@ func TestRemoveMissingResponsesReasoningItemPreservesRecoverableReasoning(t *tes
 	}
 }
 
-func TestRemoveMissingResponsesReasoningItemRejectsInvalidJSON(t *testing.T) {
+func TestRemoveMissingResponsesReasoningItemsRejectsInvalidJSON(t *testing.T) {
 	body := []byte(`{"input":`)
-	normalized, removed, err := RemoveMissingResponsesReasoningItem(body, "rs_missing")
+	normalized, removed, err := RemoveMissingResponsesReasoningItems(body, "rs_missing")
 	require.Error(t, err)
 	require.Zero(t, removed)
 	require.Equal(t, body, normalized)

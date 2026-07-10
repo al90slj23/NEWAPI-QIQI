@@ -21,6 +21,7 @@ export interface EnhancedCompatibilityRuleDefinition {
   id: string
   key: string
   settingKey: `qiqi_setting.${string}`
+  retryTimesSettingKey?: `qiqi_setting.${string}`
   shortNameKey: string
   descriptionKey: string
   referenceKeys: {
@@ -36,18 +37,38 @@ export const RESPONSES_MISSING_REASONING_ITEM_RULE = {
   settingKey: 'qiqi_setting.responses_missing_reasoning_item_retry_enabled',
   shortNameKey: 'Invalid reasoning reference recovery',
   descriptionKey:
-    'Detects the exact OpenAI Responses 400 error for an invalid empty rs_ reasoning reference. It removes only that empty reference and retries once on the same channel; reasoning content, encrypted state, messages, and tool calls are preserved.',
+    'Detects the exact OpenAI Responses 400 error for invalid empty rs_ reasoning references. After verifying the reported item, it removes all reference-only empty rs_ reasoning items and retries once on the same channel; reasoning content, encrypted state, messages, and tool calls are preserved.',
   referenceKeys: {
     recovered:
       'Recovered after removing invalid reasoning references ({{referenceCount}}) and retrying once on the same channel.',
     recommended:
-      'This error matches the rule. Enable it to remove the invalid reasoning reference and retry once on the same channel.',
-    attempted: 'The rule was applied, but the retry still failed.',
+      'This error matches the rule and contains {{referenceCount}} invalid empty reasoning references. Enable it to remove them all and retry once on the same channel.',
+    attempted:
+      'Removed {{referenceCount}} invalid reasoning references, but the retry still failed.',
+  },
+} as const satisfies EnhancedCompatibilityRuleDefinition
+
+export const RESPONSES_STREAM_ERROR_RETRY_RULE = {
+  id: 'QIQI-EC-002',
+  key: 'responses_stream_error_retry',
+  settingKey: 'qiqi_setting.responses_stream_error_retry_enabled',
+  retryTimesSettingKey: 'qiqi_setting.responses_stream_error_retry_times',
+  shortNameKey: 'Early Responses stream error recovery',
+  descriptionKey:
+    'Buffers only initial OpenAI Responses control events. If an upstream error or premature EOF arrives before output, it is converted into a retryable error and retried through the normal channel strategy. Once output starts, streaming continues without retry to prevent duplicate content.',
+  referenceKeys: {
+    recovered:
+      'Recovered after an upstream Responses error arrived before output and the request was retried transparently.',
+    recommended:
+      'This stream failed before producing output. Enable the rule to retry early upstream errors automatically.',
+    attempted:
+      'The early Responses stream retry rule was applied, but all configured attempts failed.',
   },
 } as const satisfies EnhancedCompatibilityRuleDefinition
 
 export const ENHANCED_COMPATIBILITY_RULES = [
   RESPONSES_MISSING_REASONING_ITEM_RULE,
+  RESPONSES_STREAM_ERROR_RETRY_RULE,
 ] as const satisfies readonly EnhancedCompatibilityRuleDefinition[]
 
 export function findEnhancedCompatibilityRule(event: {

@@ -109,7 +109,7 @@ export function CompatibilityReference({
         {rule ? t(rule.shortNameKey) : t('Enhanced compatibility')}
       </span>
       <span className='text-muted-foreground text-xs leading-snug'>
-        {t(messageKey, { referenceCount: event.count || 1 })}
+        {t(messageKey, { referenceCount: event.count ?? 1 })}
       </span>
     </div>
   )

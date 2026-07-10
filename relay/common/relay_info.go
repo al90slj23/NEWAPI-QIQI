@@ -153,6 +153,8 @@ type RelayInfo struct {
 	RuntimeHeadersOverride                map[string]interface{}
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
+	DeferStreamHeadersUntilResponse       bool
+	ResponsesStreamErrorBeforeCommit      bool
 
 	// UpstreamRequestBodySize is the byte size of the marshaled upstream request
 	// body. It is set when the body is wrapped in a BodyStorage (see
@@ -661,6 +663,15 @@ func (info *RelayInfo) SetFirstResponseTime() {
 		info.FirstResponseTime = time.Now()
 		info.isFirstResponse = false
 	}
+}
+
+func (info *RelayInfo) ResetFirstResponseTime() {
+	if info == nil {
+		return
+	}
+	info.FirstResponseTime = info.StartTime.Add(-time.Second)
+	info.isFirstResponse = true
+	info.ReceivedResponseCount = 0
 }
 
 func (info *RelayInfo) HasSendResponse() bool {

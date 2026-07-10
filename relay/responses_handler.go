@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -116,8 +117,20 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		requestBody = body
 	}
 
+	doResponsesRequest := func(body io.Reader) (any, error) {
+		deferStreamHeaders := info.IsStream && operation_setting.IsResponsesStreamErrorRetryEnabled()
+		originalDeferStreamHeaders := info.DeferStreamHeadersUntilResponse
+		if deferStreamHeaders {
+			info.DeferStreamHeadersUntilResponse = true
+		}
+		defer func() {
+			info.DeferStreamHeadersUntilResponse = originalDeferStreamHeaders
+		}()
+		return adaptor.DoRequest(c, info, body)
+	}
+
 	var httpResp *http.Response
-	resp, err := adaptor.DoRequest(c, info, requestBody)
+	resp, err := doResponsesRequest(requestBody)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
@@ -134,9 +147,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 				info,
 				requestBodyStorage,
 				newAPIError,
-				func(body io.Reader) (any, error) {
-					return adaptor.DoRequest(c, info, body)
-				},
+				doResponsesRequest,
 			)
 			if retried {
 				if retryError != nil {

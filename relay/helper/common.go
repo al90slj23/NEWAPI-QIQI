@@ -40,7 +40,7 @@ func FlushWriter(c *gin.Context) (err error) {
 
 func SetEventStreamHeaders(c *gin.Context) {
 	// 检查是否已经设置过头部
-	if _, exists := c.Get("event_stream_headers_set"); exists {
+	if headerSet, exists := c.Get("event_stream_headers_set"); exists && headerSet == true {
 		return
 	}
 
@@ -52,6 +52,13 @@ func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
+}
+
+func ResetEventStreamHeaders(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set("event_stream_headers_set", false)
 }
 
 func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {

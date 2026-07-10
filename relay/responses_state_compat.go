@@ -47,7 +47,7 @@ func retryMissingResponsesReasoningItem(
 		logger.LogError(c, fmt.Sprintf("responses compatibility could not read retry body: %v", err))
 		return nil, nil, false
 	}
-	normalized, removed, err := relaycommon.RemoveMissingResponsesReasoningItem(jsonData, itemID)
+	normalized, removed, err := relaycommon.RemoveMissingResponsesReasoningItems(jsonData, itemID)
 	if err != nil {
 		logger.LogError(c, fmt.Sprintf("responses compatibility could not normalize retry body: %v", err))
 		return nil, nil, false
@@ -89,7 +89,12 @@ func retryMissingResponsesReasoningItem(
 	if info.ChannelMeta != nil {
 		channelID = info.ChannelId
 	}
-	logger.LogWarn(c, fmt.Sprintf("responses compatibility retry: removed missing reasoning item %s and retried on channel #%d", itemID, channelID))
+	logger.LogWarn(c, fmt.Sprintf(
+		"responses compatibility retry: trigger item %s, removed %d empty reasoning references, retried on channel #%d",
+		itemID,
+		removed,
+		channelID,
+	))
 
 	resp, requestErr := doRequest(body)
 	outcome := "accepted"
@@ -102,7 +107,7 @@ func retryMissingResponsesReasoningItem(
 		service.ResponsesMissingReasoningItemRule,
 		service.RelayCompatibilityEventTypeApplied,
 	)
-	event.Action = "remove_missing_empty_reasoning_item_and_retry_same_channel"
+	event.Action = "remove_all_empty_reasoning_references_and_retry_same_channel"
 	event.Outcome = outcome
 	event.ItemID = itemID
 	event.Count = removed
